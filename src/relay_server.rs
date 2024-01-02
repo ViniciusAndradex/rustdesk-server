@@ -49,6 +49,7 @@ const BLOCKLIST_FILE: &str = "blocklist.txt";
 pub async fn start(port: &str, key: &str) -> ResultType<()> {
     let key = get_server_sk(key);
     if let Ok(mut file) = std::fs::File::open(BLACKLIST_FILE) {
+        log::info!("Entrei na Blacklist");
         let mut contents = String::new();
         if file.read_to_string(&mut contents).is_ok() {
             for x in contents.split('\n') {
