@@ -417,6 +417,7 @@ impl RendezvousServer {
                     socket.send(&msg_out, addr).await?
                 }
                 Some(rendezvous_message::Union::PunchHoleRequest(ph)) => {
+                    log::info!("Entrei no PunchHoleRequest");
                     if self.pm.is_in_memory(&ph.id).await {
                         self.handle_udp_punch_hole_request(addr, ph, key).await?;
                     } else {
@@ -619,6 +620,12 @@ impl RendezvousServer {
             &addr_a,
             &addr
         );
+        log::info!(
+            "{} punch hole response to {:?} from {:?}",
+            if socket.is_none() { "TCP" } else { "UDP" },
+            &addr_a,
+            &addr
+        );
         let mut msg_out = RendezvousMessage::new();
         let mut p = PunchHoleResponse {
             socket_addr: AddrMangle::encode(addr).into(),
@@ -688,6 +695,7 @@ impl RendezvousServer {
             return Ok((msg_out, None));
         }
         let id = ph.id;
+        log::info!("Entrei no handle_punch_hole_request Fora do if: id {}", id);
         // punch hole request from A, relay to B,
         // check if in same intranet first,
         // fetch local addrs if in same intranet.
@@ -698,6 +706,15 @@ impl RendezvousServer {
                 let r = peer.read().await;
                 (r.last_reg_time.elapsed().as_millis() as i32, r.socket_addr)
             };
+            if id != "Aluno" {
+                log::info!("Entrei no handle_punch_hole_request: ph_id {}", id);
+                let mut msg_out = RendezvousMessage::new();
+                msg_out.set_punch_hole_response(PunchHoleResponse {
+                    failure: punch_hole_response::Failure::ID_BLOCKED.into(),
+                    ..Default::default()
+            });
+               return Ok((msg_out, None));
+            }
             if elapsed >= REG_TIMEOUT {
                 let mut msg_out = RendezvousMessage::new();
                 msg_out.set_punch_hole_response(PunchHoleResponse {
@@ -863,6 +880,7 @@ impl RendezvousServer {
     }
 
     async fn check_ip_blocker(&self, ip: &str, id: &str) -> bool {
+        log::info!("Entrei no check_ip_blocker");
         let mut lock = IP_BLOCKER.lock().await;
         let now = Instant::now();
         if let Some(old) = lock.get_mut(ip) {
@@ -1095,6 +1113,7 @@ impl RendezvousServer {
 
     async fn handle_listener(&self, stream: TcpStream, addr: SocketAddr, key: &str, ws: bool) {
         log::debug!("Tcp connection from {:?}, ws: {}", addr, ws);
+        log::info!("Tcp connection from {:?}, ws: {}", addr, ws);
         let mut rs = self.clone();
         let key = key.to_owned();
         tokio::spawn(async move {
