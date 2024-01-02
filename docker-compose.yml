@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
 
   hbbr:
-    container_name: hbbr
+    container_name: hbbr -k _
     ports:
       - 21117:21117
       - 21119:21119
