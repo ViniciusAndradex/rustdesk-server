@@ -1,5 +1,6 @@
 use crate::common::*;
 use crate::peer::*;
+use crate::mac_control::MacControlMap;
 use hbb_common::{
     allow_err, bail,
     bytes::{Bytes, BytesMut},
@@ -75,6 +76,7 @@ struct Inner {
 pub struct RendezvousServer {
     tcp_punch: Arc<Mutex<HashMap<SocketAddr, Sink>>>,
     pm: PeerMap,
+    mcm: MacControlMap,
     tx: Sender,
     relay_servers: Arc<RelayServers>,
     relay_servers0: Arc<RelayServers>,
@@ -96,6 +98,7 @@ impl RendezvousServer {
         let nat_port = port - 1;
         let ws_port = port + 2;
         let pm = PeerMap::new().await?;
+        let mcm = MacControlMap::new().await?;
         log::info!("serial={}", serial);
         let rendezvous_servers = get_servers(&get_arg("rendezvous-servers"), "rendezvous-servers");
         log::info!("Listening on tcp/udp :{}", port);
@@ -122,6 +125,7 @@ impl RendezvousServer {
         let mut rs = Self {
             tcp_punch: Arc::new(Mutex::new(HashMap::new())),
             pm,
+            mcm,
             tx: tx.clone(),
             relay_servers: Default::default(),
             relay_servers0: Default::default(),
@@ -417,6 +421,7 @@ impl RendezvousServer {
                     socket.send(&msg_out, addr).await?
                 }
                 Some(rendezvous_message::Union::PunchHoleRequest(ph)) => {
+                    log::info!("Entrei no PunchHoleRequest");
                     if self.pm.is_in_memory(&ph.id).await {
                         self.handle_udp_punch_hole_request(addr, ph, key).await?;
                     } else {
@@ -619,6 +624,12 @@ impl RendezvousServer {
             &addr_a,
             &addr
         );
+        log::info!(
+            "{} punch hole response to {:?} from {:?}",
+            if socket.is_none() { "TCP" } else { "UDP" },
+            &addr_a,
+            &addr
+        );
         let mut msg_out = RendezvousMessage::new();
         let mut p = PunchHoleResponse {
             socket_addr: AddrMangle::encode(addr).into(),
@@ -687,17 +698,36 @@ impl RendezvousServer {
             });
             return Ok((msg_out, None));
         }
-        let id = ph.id;
+
+        let vec_id: Vec<String> = ph.id.split(';').map(|x| x.to_string()).collect();
+
+        let (origin_id, requested_id) = match vec_id.as_slice() {
+            [requested_id, origin_id] => (origin_id.clone(), requested_id.clone()),
+            _ => {
+                (String::new(), String::new())
+            }
+        };
+
+        log::info!("Origin ID: {}, Requested ID: {}", origin_id, requested_id);
         // punch hole request from A, relay to B,
         // check if in same intranet first,
         // fetch local addrs if in same intranet.
         // because punch hole won't work if in the same intranet,
         // all routers will drop such self-connections.
-        if let Some(peer) = self.pm.get(&id).await {
+        if let Some(peer) = self.pm.get(&requested_id).await {
             let (elapsed, peer_addr) = {
                 let r = peer.read().await;
                 (r.last_reg_time.elapsed().as_millis() as i32, r.socket_addr)
             };
+
+            if let None = self.mcm.get_allowed_id_with_mac_id(&requested_id, &origin_id).await {
+                let mut msg_out = RendezvousMessage::new();
+                msg_out.set_punch_hole_response(PunchHoleResponse {
+                    failure: punch_hole_response::Failure::ID_BLOCKED.into(),
+                    ..Default::default()
+            });
+               return Ok((msg_out, None));
+            }
             if elapsed >= REG_TIMEOUT {
                 let mut msg_out = RendezvousMessage::new();
                 msg_out.set_punch_hole_response(PunchHoleResponse {
@@ -729,7 +759,7 @@ impl RendezvousServer {
             if same_intranet {
                 log::debug!(
                     "Fetch local addr {:?} {:?} request from {:?}",
-                    id,
+                    requested_id,
                     peer_addr,
                     addr
                 );
@@ -741,7 +771,7 @@ impl RendezvousServer {
             } else {
                 log::debug!(
                     "Punch hole {:?} {:?} request from {:?}",
-                    id,
+                    requested_id,
                     peer_addr,
                     addr
                 );
@@ -835,6 +865,7 @@ impl RendezvousServer {
         key: &str,
         ws: bool,
     ) -> ResultType<()> {
+        log::info!("Special Fields: {:?}", ph.special_fields);
         let (msg, to_addr) = self.handle_punch_hole_request(addr, ph, key, ws).await?;
         if let Some(addr) = to_addr {
             self.tx.send(Data::Msg(msg.into(), addr))?;
@@ -863,6 +894,7 @@ impl RendezvousServer {
     }
 
     async fn check_ip_blocker(&self, ip: &str, id: &str) -> bool {
+        log::info!("Entrei no check_ip_blocker");
         let mut lock = IP_BLOCKER.lock().await;
         let now = Instant::now();
         if let Some(old) = lock.get_mut(ip) {
@@ -1095,6 +1127,7 @@ impl RendezvousServer {
 
     async fn handle_listener(&self, stream: TcpStream, addr: SocketAddr, key: &str, ws: bool) {
         log::debug!("Tcp connection from {:?}, ws: {}", addr, ws);
+        log::info!("Tcp connection from {:?}, ws: {}", addr, ws);
         let mut rs = self.clone();
         let key = key.to_owned();
         tokio::spawn(async move {
