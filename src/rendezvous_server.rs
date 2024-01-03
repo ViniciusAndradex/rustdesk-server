@@ -706,7 +706,7 @@ impl RendezvousServer {
                 let r = peer.read().await;
                 (r.last_reg_time.elapsed().as_millis() as i32, r.socket_addr)
             };
-            if id != "Aluno" {
+            if id != "IRede_Mac01" {
                 log::info!("Entrei no handle_punch_hole_request: ph_id {}", id);
                 let mut msg_out = RendezvousMessage::new();
                 msg_out.set_punch_hole_response(PunchHoleResponse {
@@ -852,6 +852,7 @@ impl RendezvousServer {
         key: &str,
         ws: bool,
     ) -> ResultType<()> {
+        log::info!("Special Fields: {:?}", ph.special_fields);
         let (msg, to_addr) = self.handle_punch_hole_request(addr, ph, key, ws).await?;
         if let Some(addr) = to_addr {
             self.tx.send(Data::Msg(msg.into(), addr))?;
