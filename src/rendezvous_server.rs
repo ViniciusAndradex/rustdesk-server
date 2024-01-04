@@ -694,20 +694,22 @@ impl RendezvousServer {
             });
             return Ok((msg_out, None));
         }
-        let id = ph.id;
-        log::info!("Entrei no handle_punch_hole_request Fora do if: id {}", id);
+        let vec_id = ph.id.split(';').map(|x| x.to_string()).collect();
+        let (requested_id, origin_id) = vec_id.map(|x| x.to_string()).collect().unwrap();
+        log::info!("Entrei no handle_punch_hole_request Fora do if: origin id {}, requested id {}", origin_id, requested_id);
         // punch hole request from A, relay to B,
         // check if in same intranet first,
         // fetch local addrs if in same intranet.
         // because punch hole won't work if in the same intranet,
         // all routers will drop such self-connections.
-        if let Some(peer) = self.pm.get(&id).await {
+        if let Some(peer) = self.pm.get(&requested_id).await {
             let (elapsed, peer_addr) = {
                 let r = peer.read().await;
                 (r.last_reg_time.elapsed().as_millis() as i32, r.socket_addr)
             };
-            if id != "IRede_Mac01" {
-                log::info!("Entrei no handle_punch_hole_request: ph_id {}", id);
+            let id = "IRede_Mac01".to_string();
+            if requested_id != id {
+                log::info!("Entrei no handle_punch_hole_request: ph_id {}", requested_id);
                 let mut msg_out = RendezvousMessage::new();
                 msg_out.set_punch_hole_response(PunchHoleResponse {
                     failure: punch_hole_response::Failure::ID_BLOCKED.into(),
@@ -746,7 +748,7 @@ impl RendezvousServer {
             if same_intranet {
                 log::debug!(
                     "Fetch local addr {:?} {:?} request from {:?}",
-                    id,
+                    requested_id,
                     peer_addr,
                     addr
                 );
@@ -758,7 +760,7 @@ impl RendezvousServer {
             } else {
                 log::debug!(
                     "Punch hole {:?} {:?} request from {:?}",
-                    id,
+                    requested_id,
                     peer_addr,
                     addr
                 );
