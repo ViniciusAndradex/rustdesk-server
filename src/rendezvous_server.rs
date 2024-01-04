@@ -698,7 +698,7 @@ impl RendezvousServer {
         let vec_id: Vec<String> = ph.id.split(';').map(|x| x.to_string()).collect();
 
         let (origin_id, requested_id) = match vec_id.as_slice() {
-            [origin_id, requested_id] => (origin_id.clone(), requested_id.clone()),
+            [requested_id, origin_id] => (origin_id.clone(), requested_id.clone()),
             _ => {
                 (String::new(), String::new())
             }
@@ -717,7 +717,6 @@ impl RendezvousServer {
             };
             let id = "IRede_Mac01".to_string();
             if requested_id != id {
-                log::info!("Entrei no handle_punch_hole_request: ph_id {}", requested_id);
                 let mut msg_out = RendezvousMessage::new();
                 msg_out.set_punch_hole_response(PunchHoleResponse {
                     failure: punch_hole_response::Failure::ID_BLOCKED.into(),
