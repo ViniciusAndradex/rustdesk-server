@@ -695,8 +695,8 @@ impl RendezvousServer {
             return Ok((msg_out, None));
         }
 
-        let vec_id: Vec<_> = ph.id.split(';').map(|x| x.to_string()).collect();
-        let vec_id: Vec<String> = vec_id;
+        let vec_id: Vec<String> = ph.id.split(';').map(|x| x.to_string()).collect();
+
         let (origin_id, requested_id) = match vec_id.as_slice() {
             [origin_id, requested_id] => (origin_id.clone(), requested_id.clone()),
             _ => {
