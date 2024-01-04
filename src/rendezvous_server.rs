@@ -694,9 +694,17 @@ impl RendezvousServer {
             });
             return Ok((msg_out, None));
         }
-        let vec_id = ph.id.split(';').map(|x| x.to_string()).collect();
-        let (requested_id, origin_id) = vec_id.map(|x| x.to_string()).collect().unwrap();
-        log::info!("Entrei no handle_punch_hole_request Fora do if: origin id {}, requested id {}", origin_id, requested_id);
+        let vec_id: Vec<_> = ph.id.split(';').map(|x| x.to_string()).collect();
+        let vec_id: Vec<String> = vec_id;
+
+        let (origin_id, requested_id) = match vec_id.as_slice() {
+            [origin_id, requested_id] => (origin_id.clone(), requested_id.clone()),
+            _ => {
+                (String::new(), String::new())
+            }
+        };
+
+        log::info!("Origin ID: {}, Requested ID: {}", origin_id, requested_id);
         // punch hole request from A, relay to B,
         // check if in same intranet first,
         // fetch local addrs if in same intranet.
