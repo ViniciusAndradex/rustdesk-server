@@ -46,6 +46,12 @@ pub struct Peer {
     pub status: Option<i64>,
 }
 
+#[derive(Default)]
+pub struct MacControl{
+    pub mac_id: String,
+    pub allowed_id: String
+}
+
 impl Database {
     pub async fn new(url: &str) -> ResultType<Database> {
         if !std::path::Path::new(url).exists() {
@@ -90,6 +96,19 @@ impl Database {
         )
         .execute(self.pool.get().await?.deref_mut())
         .await?;
+
+        sqlx::query!(
+            "
+            create table if not exists mac_control (
+                mac_id varchar(30) UNIQUE primary key not null,
+                allowed_id varchar(30) not null
+            ) without rowid;
+            create index if not exists index_mac_control_mac_id on mac_control (mac_id);
+            create index if not exists index_mac_control_allowed_id on mac_control (allowed_id);
+            "
+        )
+        .execute(self.pool.get()
+        .await?.deref_mut()).await?;
         Ok(())
     }
 
@@ -101,6 +120,27 @@ impl Database {
         )
         .fetch_optional(self.pool.get().await?.deref_mut())
         .await?)
+    }
+
+    pub async fn get_mac_id(&self, id: &str)-> ResultType<Option<MacControl>> {
+        Ok(sqlx::query_as!(
+            MacControl,
+            "select mac_id, allowed_id from mac_control where mac_id = ?",
+            id
+        ).fetch_optional(self.pool.get().await?.deref_mut()
+        .await?)
+        )
+    }
+
+    pub async fn get_allowed_id_with_mac_id(&self, mac_id: &str, allowed_id: &str) -> ResultType<Option<MacControl>> {
+        Ok(sqlx::query_as!(
+            MacControl,
+            "select mac_id, allowed_id from mac_control where mac_id = ? and allowed_id = ?",
+            mac_id,
+            allowed_id
+        ).fetch_optional(self.pool.get().await?.deref_mut()
+        .await?)
+        )
     }
 
     pub async fn insert_peer(
@@ -124,6 +164,17 @@ impl Database {
         Ok(guid)
     }
 
+    pub async fn insert_mac(&self, mac_id: &str, allowed_id: &str) -> ResultType<()> {
+        sqlx::query!(
+            "insert into mac_control(mac_id, allowed_id) values(?, ?)",
+            mac_id,
+            allowed_id
+        )
+        .execute(self.pool.get().await?.deref_mut())
+        .await?;
+        Ok(())
+    }
+
     pub async fn update_pk(
         &self,
         guid: &Vec<u8>,
@@ -137,6 +188,21 @@ impl Database {
             pk,
             info,
             guid
+        )
+        .execute(self.pool.get().await?.deref_mut())
+        .await?;
+        Ok(())
+    }
+
+    pub async fn update_mac(
+        &self,
+        mac_id: &str,
+        allowed_id: &str,
+    ) -> ResultType<()> {
+        sqlx::query!(
+            "update mac_control set allowed_id=? where mac_id=?",
+            allowed_id,
+            mac_id
         )
         .execute(self.pool.get().await?.deref_mut())
         .await?;
