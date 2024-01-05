@@ -98,6 +98,7 @@ impl RendezvousServer {
         let nat_port = port - 1;
         let ws_port = port + 2;
         let pm = PeerMap::new().await?;
+        let mcm = MacControlMap::new().await?;
         log::info!("serial={}", serial);
         let rendezvous_servers = get_servers(&get_arg("rendezvous-servers"), "rendezvous-servers");
         log::info!("Listening on tcp/udp :{}", port);
@@ -719,7 +720,7 @@ impl RendezvousServer {
                 (r.last_reg_time.elapsed().as_millis() as i32, r.socket_addr)
             };
 
-            if let Some(mac_control) = self.mcm.get_allowed_id_with_mac_id(&requested_id, &origin_id).await {
+            if let None = self.mcm.get_allowed_id_with_mac_id(&requested_id, &origin_id).await {
                 let mut msg_out = RendezvousMessage::new();
                 msg_out.set_punch_hole_response(PunchHoleResponse {
                     failure: punch_hole_response::Failure::ID_BLOCKED.into(),
