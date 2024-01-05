@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use hbb_common::{log, ResultType};
 use sqlx::{
-    sqlite::SqliteConnectOptions, ConnectOptions, Connection, Error as SqlxError, SqliteConnection,
+    sqlite::SqliteConnectOptions, ConnectOptions, Connection, Error as SqlxError, SqliteConnection
 };
 use std::{ops::DerefMut, str::FromStr};
 //use sqlx::postgres::PgPoolOptions;
@@ -100,7 +100,7 @@ impl Database {
         sqlx::query!(
             "
             create table if not exists mac_control (
-                mac_id varchar(30) UNIQUE primary key not null,
+                mac_id varchar(30) unique primary key not null,
                 allowed_id varchar(30) not null
             ) without rowid;
             create index if not exists index_mac_control_mac_id on mac_control (mac_id);
@@ -127,9 +127,8 @@ impl Database {
             MacControl,
             "select mac_id, allowed_id from mac_control where mac_id = ?",
             id
-        ).fetch_optional(self.pool.get().await?.deref_mut()
+        ).fetch_optional(self.pool.get().await?.deref_mut())
         .await?)
-        )
     }
 
     pub async fn get_allowed_id_with_mac_id(&self, mac_id: &str, allowed_id: &str) -> ResultType<Option<MacControl>> {
@@ -138,9 +137,8 @@ impl Database {
             "select mac_id, allowed_id from mac_control where mac_id = ? and allowed_id = ?",
             mac_id,
             allowed_id
-        ).fetch_optional(self.pool.get().await?.deref_mut()
+        ).fetch_optional(self.pool.get().await?.deref_mut())
         .await?)
-        )
     }
 
     pub async fn insert_peer(
