@@ -1,7 +1,5 @@
-use crate::common::*;
 use crate::database;
 use hbb_common::{
-    bytes::Bytes,
     log,
     rendezvous_proto::*,
     tokio::sync::{Mutex, RwLock},
@@ -30,6 +28,7 @@ pub(crate) struct MacControlInfo {
 }
 
 pub(crate) struct MacControl {
+    pub(crate) socket_addr: SocketAddr,
     pub(crate) mac_id: String,
     pub(crate) allowed_id: String,
 }
@@ -37,6 +36,7 @@ pub(crate) struct MacControl {
 impl Default for MacControl {
     fn default() -> Self {
         Self {
+            socket_addr: "0.0.0.0:0".parse().unwrap(),
             mac_id: String::new(),
             allowed_id: String::new()
         }
@@ -82,86 +82,89 @@ impl MacControlMap {
         allowed_id: String,
         mac_control: LockMacControl,
         addr: SocketAddr,
-        uuid: Bytes,
-        pk: Bytes,
-        ip: String,
     ) -> register_pk_response::Result {
-        log::info!("update_pk {} {:?} {:?} {:?}", id, addr, uuid, pk);
-        let (info_str, guid) = {
+        log::info!("mac update_pk {} {:?} {:?}", mac_id, addr, allowed_id);
+        let (mac) = {
             let mut w = mac_control.write().await;
             w.socket_addr = addr;
-            w.uuid = uuid.clone();
-            w.pk = pk.clone();
-            w.last_reg_time = Instant::now();
-            w.info.ip = ip;
+            w.allowed_id = allowed_id;
             (
-                serde_json::to_string(&w.info).unwrap_or_default(),
-                w.guid.clone(),
+                w.mac_id.clone(),
             )
         };
-        if guid.is_empty() {
-            match self.db.insert_peer(&id, &uuid, &pk, &info_str).await {
+        if mac.is_empty() {
+            match self.db.insert_mac(&mac_id, &allowed_id).await {
                 Err(err) => {
-                    log::error!("db.insert_peer failed: {}", err);
+                    log::error!("db.insert_mac failed: {}", err);
                     return register_pk_response::Result::SERVER_ERROR;
                 }
-                Ok(guid) => {
-                    peer.write().await.guid = guid;
+                Ok(mac) => {
+                    log::info!("mac inserted {:?}", mac_id);
                 }
             }
         } else {
-            if let Err(err) = self.db.update_pk(&guid, &id, &pk, &info_str).await {
-                log::error!("db.update_pk failed: {}", err);
+            if let Err(err) = self.db.update_mac(&mac_id, &allowed_id).await {
+                log::error!("db.update_mac failed: {}", err);
                 return register_pk_response::Result::SERVER_ERROR;
             }
-            log::info!("pk updated instead of insert");
+            log::info!("mac updated instead of insert");
         }
         register_pk_response::Result::OK
     }
 
     #[inline]
-    pub(crate) async fn get(&self, id: &str) -> Option<LockPeer> {
-        let p = self.map.read().await.get(id).cloned();
+    pub(crate) async fn get(&self, mac_id: &String) -> Option<LockMacControl> {
+        let p = self.map.read().await.get(mac_id).cloned();
         if p.is_some() {
             return p;
-        } else if let Ok(Some(v)) = self.db.get_peer(id).await {
-            let peer = Peer {
-                guid: v.guid,
-                uuid: v.uuid.into(),
-                pk: v.pk.into(),
-                // user: v.user,
-                info: serde_json::from_str::<PeerInfo>(&v.info).unwrap_or_default(),
-                // disabled: v.status == Some(0),
+        } else if let Ok(Some(v)) = self.db.get_mac_id(mac_id).await {
+            let mac = MacControl {
+                mac_id: v.mac_id,
+                allowed_id: v.allowed_id,
                 ..Default::default()
             };
-            let peer = Arc::new(RwLock::new(peer));
-            self.map.write().await.insert(id.to_owned(), peer.clone());
-            return Some(peer);
+            let mac_control = Arc::new(RwLock::new(mac));
+            self.map.write().await.insert(mac_id.to_owned(), mac.clone());
+            return Some(mac_control);
+        }
+        None
+    }
+
+    pub(crate) async fn get_allowed_id_with_mac_id(&self, mac_id: &String, allowed_id: &String) -> Option<LockMacControl> {
+        if let Ok(Some(v)) = self.db.get_allowed_id_with_mac_id(mac_id, allowed_id).await {
+            let mac = MacControl {
+                mac_id: v.mac_id,
+                allowed_id: v.allowed_id,
+                ..Default::default()
+            };
+            let mac_control = Arc::new(RwLock::new(mac));
+            self.map.write().await.insert(mac_id.to_owned(), mac.clone());
+            return Some(mac_control);
         }
         None
     }
 
     #[inline]
-    pub(crate) async fn get_or(&self, id: &str) -> LockPeer {
-        if let Some(p) = self.get(id).await {
+    pub(crate) async fn get_or(&self, mac_id: &String) -> LockMacControl {
+        if let Some(p) = self.get(mac_id).await {
             return p;
         }
         let mut w = self.map.write().await;
-        if let Some(p) = w.get(id) {
+        if let Some(p) = w.get(mac_id) {
             return p.clone();
         }
-        let tmp = LockPeer::default();
-        w.insert(id.to_owned(), tmp.clone());
+        let tmp = LockMacControl::default();
+        w.insert(mac_id.to_owned(), tmp.clone());
         tmp
     }
 
     #[inline]
-    pub(crate) async fn get_in_memory(&self, id: &str) -> Option<LockPeer> {
-        self.map.read().await.get(id).cloned()
+    pub(crate) async fn get_in_memory(&self, mac_id: &String) -> Option<LockMacControl> {
+        self.map.read().await.get(mac_id).cloned()
     }
 
     #[inline]
-    pub(crate) async fn is_in_memory(&self, id: &str) -> bool {
-        self.map.read().await.contains_key(id)
+    pub(crate) async fn is_in_memory(&self, mac_id: &String) -> bool {
+        self.map.read().await.contains_key(mac_id)
     }
 }
