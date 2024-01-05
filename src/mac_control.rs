@@ -84,13 +84,13 @@ impl MacControlMap {
         addr: SocketAddr,
     ) -> register_pk_response::Result {
         log::info!("mac update_pk {} {:?} {:?}", mac_id, addr, allowed_id);
-        let (mac) = {
+        let mac = {
             let mut w = mac_control.write().await;
             w.socket_addr = addr;
-            w.allowed_id = allowed_id;
-            (
-                w.mac_id.clone(),
-            )
+            w.allowed_id = allowed_id.clone();
+
+            w.mac_id.clone()
+
         };
         if mac.is_empty() {
             match self.db.insert_mac(&mac_id, &allowed_id).await {
@@ -98,7 +98,7 @@ impl MacControlMap {
                     log::error!("db.insert_mac failed: {}", err);
                     return register_pk_response::Result::SERVER_ERROR;
                 }
-                Ok(mac) => {
+                Ok(_) => {
                     log::info!("mac inserted {:?}", mac_id);
                 }
             }
@@ -123,9 +123,9 @@ impl MacControlMap {
                 allowed_id: v.allowed_id,
                 ..Default::default()
             };
-            let mac_control = Arc::new(RwLock::new(mac));
+            let mac = Arc::new(RwLock::new(mac));
             self.map.write().await.insert(mac_id.to_owned(), mac.clone());
-            return Some(mac_control);
+            return Some(mac);
         }
         None
     }
@@ -137,9 +137,9 @@ impl MacControlMap {
                 allowed_id: v.allowed_id,
                 ..Default::default()
             };
-            let mac_control = Arc::new(RwLock::new(mac));
+            let mac = Arc::new(RwLock::new(mac));
             self.map.write().await.insert(mac_id.to_owned(), mac.clone());
-            return Some(mac_control);
+            return Some(mac);
         }
         None
     }
