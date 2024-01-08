@@ -1,5 +1,6 @@
 use crate::common::*;
 use crate::peer::*;
+use crate::mac_control::MacControlMap;
 use hbb_common::{
     allow_err, bail,
     bytes::{Bytes, BytesMut},
@@ -75,6 +76,7 @@ struct Inner {
 pub struct RendezvousServer {
     tcp_punch: Arc<Mutex<HashMap<SocketAddr, Sink>>>,
     pm: PeerMap,
+    mcm: MacControlMap,
     tx: Sender,
     relay_servers: Arc<RelayServers>,
     relay_servers0: Arc<RelayServers>,
@@ -96,6 +98,7 @@ impl RendezvousServer {
         let nat_port = port - 1;
         let ws_port = port + 2;
         let pm = PeerMap::new().await?;
+        let mcm = MacControlMap::new().await?;
         log::info!("serial={}", serial);
         let rendezvous_servers = get_servers(&get_arg("rendezvous-servers"), "rendezvous-servers");
         log::info!("Listening on tcp/udp :{}", port);
@@ -122,6 +125,7 @@ impl RendezvousServer {
         let mut rs = Self {
             tcp_punch: Arc::new(Mutex::new(HashMap::new())),
             pm,
+            mcm,
             tx: tx.clone(),
             relay_servers: Default::default(),
             relay_servers0: Default::default(),
@@ -715,8 +719,8 @@ impl RendezvousServer {
                 let r = peer.read().await;
                 (r.last_reg_time.elapsed().as_millis() as i32, r.socket_addr)
             };
-            let id = "IRede_Mac01".to_string();
-            if requested_id != id {
+
+            if let None = self.mcm.get_allowed_id_with_mac_id(&requested_id, &origin_id).await {
                 let mut msg_out = RendezvousMessage::new();
                 msg_out.set_punch_hole_response(PunchHoleResponse {
                     failure: punch_hole_response::Failure::ID_BLOCKED.into(),
